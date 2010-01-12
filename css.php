@@ -84,4 +84,5 @@ else
 }
 
 header('Content-type: text/css');
+
 exit($css);
