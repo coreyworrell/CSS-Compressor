@@ -5,7 +5,7 @@
  *
  * @author   Corey Worrell
  * @url      http://coreyworrell.com
- * @version  1.0
+ * @version  1.1
  *
  * Usage:
  * <link rel="stylesheet" type="text/css" href="css.php?reset,grid,styles" />
@@ -22,76 +22,66 @@
  *   - index.html
  */
 
-// Name of generated "cache" file (w/out '.css' extension)
-$compressed = 'compressed';
-// End configuration
+define('EXT', '.css');
 
-function bad_request()
+$url = explode('?', $_SERVER['REQUEST_URI'], 2);
+$cache = md5($url[1]).EXT;
+$files = explode(',', $url[1]);
+
+$cache_exists = file_exists($cache);
+$cache_mtime  = $cache_exists ? filemtime($cache) : NULL;
+
+$compress = $cache_exists ? FALSE : TRUE;
+
+foreach ($files as $key => $file)
 {
-	header('HTTP/1.1 400 Bad Request');
-	echo 'HTTP/1.1 400 Bad Request';
-	exit;
-}
-
-$url = parse_url($_SERVER['REQUEST_URI']);
-$files = explode(',', $url['query']);
-
-$compress = FALSE;
-
-if (file_exists($compressed.'.css'))
-{
-	foreach ($files as $file)
+	$file = $files[$key] = $file.EXT;
+	
+	if (strpos($file, '://') === FALSE)
 	{
-		if ( ! file_exists($file.'.css'))
+		if ( ! file_exists($file))
 		{
-			bad_request();
+			header('Content-type: text/html');
+			header('HTTP/1.1 400 Bad Request');
+			exit('File <code>'.$file.'</code> could not be found.');
 		}
 		
-		if ($time = filemtime($file.'.css') AND $time > filemtime($compressed.'.css'))
+		if ( ! $compress AND filemtime($file) > $cache_mtime)
 		{
 			$compress = TRUE;
 		}
 	}
 }
 
-if (file_exists($compressed.'.css') AND ! $compress)
+if ($compress)
 {
-	$css = file_get_contents($compressed.'.css');
-}
-else
-{
-	$file = '';
-	$css  = '';
+	$replace = array
+	(
+		'/\s+/'                                  => ' ',
+		'/[\s+]?(;|:|{|}|,)[\s+]?/'              => '$1',
+		'/[\t\r\n]/'                             => '',
+		'/\/\*(.*?)\*\//'                        => '',
+		'/;}/'                                   => '}',
+		'/}(\s+)?/'                              => '}',
+		'/#([\da-f])\1([\da-f])\2([\da-f])\3/i'  => '#$1$2$3',
+		'/([^\d])0(px|em|pt|ex|%|pc|cm|in|mm)/i' => '${1}0',
+	);
+	
+	$css = '';
 	
 	foreach ($files as $file)
 	{
-		if ( ! file_exists($file.'.css'))
-		{
-			bad_request();
-		}
-		
-		$css .= file_get_contents($file.'.css');
+		$css .= file_get_contents($file);
 	}
-
-	$replace = array
-	(
-		'/\s+/'                                     => ' ',
-		'/[\s+]?(;|:|{|}|,)[\s+]?/'                 => '$1',
-		'/[\t\r\n]/'                                => '',
-		'/\/\*(.*?)\*\//'                           => '',
-		'/;}/'                                      => '}',
-		'/}(\s+)?/'                                 => '}',
-		'/#([\da-f])\1([\da-f])\2([\da-f])\3/i'     => '#$1$2$3',
-		'/([^\d])0(px|em|pt|ex|%|pc|cm|in|mm)/i'    => '${1}0',
-	);
 
 	$css = trim(preg_replace(array_keys($replace), array_values($replace), $css));
 	
-	$handle = fopen($compressed.'.css', 'w');
-			  fwrite($handle, $css);
-			  fclose($handle);
+	file_put_contents($cache, $css);
+}
+else
+{
+	$css = file_get_contents($cache);
 }
 
 header('Content-type: text/css');
-
-echo $css;
+exit($css);
